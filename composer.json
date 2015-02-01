@@ -1,0 +1,19 @@
+{
+  "name": "chetzof/inputfilter",
+  "description": "Validation & filter lib",
+  "require-dev": {
+    "phpunit/phpunit": "~4.4"
+  },
+  "authors": [
+    {
+      "name": "chetzof",
+      "email": "vcosvic@gmail.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Chetzof\\": "src/"
+    }
+  },
+  "require": {}
+}
