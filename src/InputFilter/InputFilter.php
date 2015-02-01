@@ -29,7 +29,9 @@ class InputFilter
 
     private function perform_preliminary_sanitization() {
         array_walk_recursive($this->input, function (&$value) {
-            $value = trim($value);
+            if (is_string($value)) {
+                $value = trim($value);
+            }
 //            if ($value === '') {
 //                $value = null;
 //            }
@@ -107,13 +109,17 @@ class InputFilter
      * @return bool
      */
     private function validate_positive_integer(&$value, $max_range = null) {
-        $value = filter_var($value, FILTER_VALIDATE_INT, $this->build_filter_options(
-            [
-                'min_range' => 1,
-                'max_range' => $max_range,
-            ]
-        )
-        );
+        if (!is_bool($value)) {
+            $value = filter_var($value, FILTER_VALIDATE_INT, $this->build_filter_options(
+                [
+                    'min_range' => 1,
+                    'max_range' => $max_range,
+                ]
+            )
+            );
+        } else {
+            $value = false;
+        }
 
         return $value !== false;
     }
