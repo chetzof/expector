@@ -9,7 +9,10 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         return [
             [
                 [
-                    'string' => '90',
+                    'simple_string' => 'foo',
+                    'slug_string' => 'foo-bar_foo',
+                    'numeric_string' => '90',
+                    'text' => 'foo bar',
                     'empty' => '',
                     'empty_array' => [],
                     'non_empty_array' => ['bar'],
@@ -20,45 +23,211 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
                     'null' => null,
                     'true' => true,
                     'false' => false,
-                    '1' => '1',
-                    '0' => '0',
+                    'one_string' => '1',
+                    'two_string' => '0',
                     'off' => 'off',
+                    'number_string' => '42a',
                 ]
             ]
         ];
     }
 
+    public function testAssumptions(){
+        $input = [
+            'limit' => '31',
+            'page' => 'invalid string',
+            'non_assumption_field' => '22',
+            'test' => 'test1'
+        ];
+        $if = new InputFilter($input, true);
+        $this->assertEquals([
+            'limit' => 31,
+            'page' => false,
+            'test' => 'test1'
+        ],$if->all());
+
+        $if = new InputFilter($input);
+        $this->assertEmpty([],$if->all());
+    }
+
     /**
      * @dataProvider phpTypesDataProvider
      */
-    public function testPositiveIntegerFilter($data) {
-        $v = new InputFilter($data);
-        foreach (array_keys($data) as $field) {
-            $v->expect_positive_integer($field);
-        }
-        $v->expect_positive_integer('non_existent_field');
+    public function testPositiveDecimalConstraint($data) {
 
-        $this->assertEquals([
-            'string' => 90,
-            'empty' => false,
-            'empty_array' => false,
-            'non_empty_array' => false,
-            'float' => false,
-            'negative_integer' => false,
-            'positive_integer' => 43,
-            'object' => false,
-            'null' => false,
-            'true' => false,
-            'false' => false,
-            '1' => 1,
-            '0' => false,
-            'off' => false,
-            'non_existent_field' => false
-        ], $v->all());
+        $data['beyond_max_range'] = 101;
+
+        $expected_values_string = $this->getArrayTemplate($data,
+            [
+                'numeric_string' => (int) $data['numeric_string'],
+                'one_string' => (int) $data['one_string'],
+                'two_string' => (int) $data['two_string'],
+            ],
+            [
+                'positive_integer',
+            ]
+        );
+
+        $v = new InputFilter($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            if ($field == 'beyond_max_range') {
+                $v->expect_positive_decimal($field, 100);
+            }  else {
+                $v->expect_positive_decimal($field);
+            }
+        }
+
+        $this->assertEquals($expected_values_string, $v->all());
     }
 
-    public function testArrayObject(){
+    /**
+     * @dataProvider phpTypesDataProvider
+     */
+    public function testIntegerConstraint($data) {
+
+        $data['beyond_max_range'] = 101;
+        $data['beyond_min_range'] = - 101;
+
+        $expected_values_string = $this->getArrayTemplate($data,
+            [
+                'numeric_string' => (int) $data['numeric_string'],
+                'negative_integer' => (int) $data['negative_integer'],
+                'one_string' => (int) $data['one_string'],
+                'two_string' => (int) $data['two_string'],
+            ],
+            [
+                'positive_integer',
+                'negative_integer'
+            ]
+        );
+
+        $v = new InputFilter($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            if ($field == 'beyond_max_range') {
+                $v->expect_decimal($field, null, 100);
+            } elseif ($field == 'beyond_min_range') {
+                $v->expect_decimal($field, - 100);
+            } else {
+                $v->expect_decimal($field);
+            }
+        }
+
+        $this->assertEquals($expected_values_string, $v->all());
+    }
+
+    /**
+     * @dataProvider phpTypesDataProvider
+     */
+    public function testSlugConstraint($data) {
+
+        $expected_values_string = $this->getArrayTemplate($data,
+            [
+                'positive_integer' => (string) $data['positive_integer'],
+                'negative_integer' => (string) $data['negative_integer'],
+            ],
+            [
+                'simple_string',
+                'slug_string',
+                'numeric_string',
+                'one_string',
+                'two_string',
+                'off',
+                'number_string',
+            ]
+        );
+
+        $v = new InputFilter($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            $v->expect_slug($field);
+        }
+
+        $this->assertEquals($expected_values_string, $v->all());
+    }
+
+    /**
+     * @dataProvider phpTypesDataProvider
+     */
+    public function testStringInArrayConstraint($data) {
+        $whitelist = [$data['simple_string'], 'bar'];
+
+        $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string']);
+
+        $v = new InputFilter($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            $v->expect_in_array($field, $whitelist);
+        }
+
+        $this->assertEquals($expected_values_string, $v->all());
+    }
+
+    /**
+     * @dataProvider phpTypesDataProvider
+     */
+    public function testIntegerInArrayConstraint($data) {
+        $whitelist = [11, $data['positive_integer']];
+
+        $expected_values_string = $this->getArrayTemplate($data, [], ['positive_integer']);
+
+        $v = new InputFilter($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            $v->expect_in_array($field, $whitelist);
+        }
+
+        $this->assertEquals($expected_values_string, $v->all());
+    }
+
+    /**
+     * @dataProvider phpTypesDataProvider
+     */
+    public function testMixedStringInArrayConstraint($data) {
+        $whitelist = [$data['simple_string'], $data['positive_integer']];
+
+        $expected_values_string = $this->getArrayTemplate($data, [
+            'positive_integer' => (string) $data['positive_integer']
+        ], ['simple_string']);
+
+        $v = new InputFilter($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            $v->expect_in_array($field, $whitelist);
+        }
+
+        $this->assertEquals($expected_values_string, $v->all());
+    }
+
+    /**
+     * @dataProvider phpTypesDataProvider
+     */
+    public function testMixedIntegerInArrayConstraint($data) {
+        $whitelist = [$data['positive_integer'], $data['simple_string']];
+
+        $expected_values_string = $this->getArrayTemplate($data, [], ['positive_integer']);
+
+        $v = new InputFilter($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            $v->expect_in_array($field, $whitelist);
+        }
+
+        $this->assertEquals($expected_values_string, $v->all());
+    }
+
+    public function testArrayObject() {
         $this->markTestIncomplete();
+    }
+
+    private function getArrayTemplate(array $data, $diff = [], $valid = []) {
+        $array = array_combine(array_keys($data), array_fill(0, count(array_keys($data)), false));
+
+        if (!empty($valid)) {
+            $array = array_merge($array, array_intersect_key($data, array_flip($valid)));
+        }
+
+        foreach ($diff as $key => $value) {
+            $array[$key] = $value;
+        }
+
+        $array['non_existent_field'] = false;
+
+        return $array;
     }
 
 }

@@ -2,7 +2,8 @@
 namespace Chetzof\InputFilter;
 
 /**
- * @method $this expect_positive_integer($fields, $max_range = null, $default = false)
+ * @method $this expect_decimal($fields, $min_range = null, $max_range = null, $default = false)
+ * @method $this expect_positive_decimal($fields, $max_range = null, $default = false)
  * @method $this expect_slug($fields, $default = false)
  * @method $this expect_bool($fields, $invalidate_on_absence = true, $default = false)
  * @method $this expect_in_array($fields, $whitelist = [], $default = false)
@@ -10,19 +11,58 @@ namespace Chetzof\InputFilter;
 class InputFilter
 {
     private $input;
-    private $output;
+    private $output = [];
     private $expectations = [];
     private $dirty = true;
     private $valid = false;
     private $force = true;
+    private $use_assumptions;
 
-    public function __construct(array $input) {
+    private $assumptions = [
+        [
+            'constraint' => 'positive_decimal',
+            'fields' => ['limit', 'page', 'id']
+        ],
+        [
+            'constraint' => ['in_array', ['test', 'test1']],
+            'fields' => ['test']
+        ]
+    ];
+
+    public function __construct(array $input, $assumptions = false) {
         $this->input = $input;
         $this->perform_preliminary_sanitization();
+        $this->use_assumptions = $assumptions;
+    }
+
+    private function add_assumption_filters() {
+        $map = [];
+        foreach ($this->assumptions as $assumption) {
+            foreach ($assumption['fields'] as $field) {
+                $map[$field] = $assumption['constraint'];
+            }
+        }
+
+        foreach (
+            new \RecursiveIteratorIterator(
+                new \RecursiveArrayIterator($this->input),
+                \RecursiveIteratorIterator::SELF_FIRST)
+            as $key => $value
+        ) {
+            if (isset($map[$key])) {
+                $args = (array) $map[$key];
+                $callable = [$this, 'expect_' . array_shift($args)];
+                array_unshift($args, $key);
+                call_user_func_array($callable, $args);
+            }
+        }
     }
 
     private function process() {
         $this->valid = true;
+        if ($this->use_assumptions) {
+            $this->add_assumption_filters();
+        }
         $this->build_filter();
         $this->dirty = false;
     }
@@ -108,11 +148,15 @@ class InputFilter
      *
      * @return bool
      */
-    private function validate_positive_integer(&$value, $max_range = null) {
+    private function validate_positive_decimal(&$value, $max_range = null) {
+        return $this->validate_decimal($value, 1, $max_range);
+    }
+
+    private function validate_decimal(&$value, $min_range = null, $max_range = null) {
         if (!is_bool($value)) {
             $value = filter_var($value, FILTER_VALIDATE_INT, $this->build_filter_options(
                 [
-                    'min_range' => 1,
+                    'min_range' => $min_range,
                     'max_range' => $max_range,
                 ]
             )
@@ -124,22 +168,14 @@ class InputFilter
         return $value !== false;
     }
 
-    private function validate_integer(&$value, $min_range = null, $max_range = null) {
-        $value = filter_var($value, FILTER_VALIDATE_INT, $this->build_filter_options(
-            [
-                'min_range' => $min_range,
-                'max_range' => $max_range,
-            ]
-        )
-        );
-
-        return $value !== false;
-    }
-
     private function validate_slug(&$value) {
-        $value = filter_var($value, FILTER_VALIDATE_REGEXP, $this->build_filter_options([
-            'regexp' => '/^([-a-z0-9_-])+$/i'
-        ]));
+        if (!is_bool($value)) {
+            $value = filter_var($value, FILTER_VALIDATE_REGEXP, $this->build_filter_options([
+                'regexp' => '/^([-a-z0-9_-]+)$/i'
+            ]));
+        } else {
+            $value = false;
+        }
 
         return $value !== false;
     }
@@ -149,7 +185,7 @@ class InputFilter
         $value_copy = $value;
         $value_type = gettype(reset($whitelist));
         if ($value_type == 'integer') {
-            if ($this->validate_integer($value_copy) === false) {
+            if ($this->validate_decimal($value_copy) === false) {
                 return false;
             }
         }
@@ -232,7 +268,7 @@ class InputFilter
 
             return $this;
         } else {
-            throw new \Exception('Invalid method');
+            throw new \Exception("Invalid method $name");
         }
     }
 
