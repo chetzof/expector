@@ -2,10 +2,10 @@
 namespace Chetzof\Expector;
 
 /**
- * @method $this dec($fields, $min_range = null, $max_range = null, $default = false)
- * @method $this expect_decimal($fields, $min_range = null, $max_range = null, $default = false)
- * @method $this expect_positive_decimal($fields, $max_range = null, $default = false)
- * @method $this decp($fields, $max_range = null, $default = false)
+ * @method $this dec($fields, $default = false)
+ * @method $this expect_decimal($fields, $default = false)
+ * @method $this expect_positive_decimal($fields, $default = false)
+ * @method $this decp($fields, $default = false)
  * @method $this expect_slug($fields, $default = false)
  * @method $this slug($fields, $default = false)
  * @method $this expect_bool($fields, $invalidate_on_absence = true, $default = false)
@@ -14,6 +14,8 @@ namespace Chetzof\Expector;
  * @method $this expect_in_array($fields, $whitelist = [], $default = false)
  * @method $this string($fields, $whitelist = [], $default = false)
  * @method $this expect_string($fields, $default = false)
+ * @method $this max($fields, $max, $default = false)
+ * @method $this expect_max($fields, $max, $default = false)
  */
 class Expector
 {
@@ -32,6 +34,7 @@ class Expector
         'bool' => 'expect_bool',
         'inarr' => 'expect_in_array',
         'string' => 'expect_string',
+        'max' => 'expect_max',
     ];
 
     const EMPTY_STRING_TO_NULL = 1;
@@ -175,28 +178,37 @@ class Expector
 
     /**
      * @param $value
-     * @param $max_range
      *
      * @return bool
      */
-    protected function validate_positive_decimal(&$value, $max_range = null) {
-        return $this->validate_decimal($value, 1, $max_range);
-    }
-
-    protected function validate_decimal(&$value, $min_range = null, $max_range = null) {
+    protected function validate_positive_decimal(&$value) {
         if (!is_bool($value)) {
-            $value = filter_var($value, FILTER_VALIDATE_INT, $this->build_filter_options(
-                [
-                    'min_range' => $min_range,
-                    'max_range' => $max_range,
-                ]
-            )
-            );
+            $value = filter_var($value, FILTER_VALIDATE_INT, $this->build_filter_options(['min_range' => 1]));
         } else {
             $value = false;
         }
 
         return $value !== false;
+    }
+
+    protected function validate_decimal(&$value) {
+        if (!is_bool($value)) {
+            $value = filter_var($value, FILTER_VALIDATE_INT);
+        } else {
+            $value = false;
+        }
+
+        return $value !== false;
+    }
+
+    protected function validate_max(&$value, $max) {
+        if (is_numeric($value) && $value <= $max) {
+            $value += 0;
+
+            return true;
+        } else {
+            return false;
+        }
     }
 
     protected function validate_slug(&$value) {

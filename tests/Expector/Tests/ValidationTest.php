@@ -32,6 +32,25 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         ];
     }
 
+    public function testMaxAndDecimalCombination() {
+        $i = new Expector([
+            'limit' => '10',
+            'over_limit' => '20',
+
+        ], [], Expector::EMPTY_STRING_TO_NULL);
+        $i
+            ->decp('limit')
+            ->max('limit', 10)
+            ->decp('over_limit')
+            ->max('over_limit', 10)
+        ;
+        $this->assertSame([
+            'limit' => 10,
+            'over_limit' => false,
+        ], $i->all());
+    }
+
+
     public function testFlags() {
         $i = new Expector([
             'foo' => '',
@@ -93,12 +112,45 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $this->assertEmpty([], $if->all());
     }
 
+    public function testDefaults() {
+        $expector = new Expector(['limit' => '']);
+        $expector->decp('limit', null, 10);
+        $this->assertSame(['limit' => 10], $expector->all());
+    }
+
+
+    /**
+     * @dataProvider phpTypesDataProvider
+     */
+    public function testMaxConstraint($data){
+        $data['numeric_string_inlimit'] = '20';
+        $expected_values_string = $this->getArrayTemplate($data,
+            [
+                'numeric_string_inlimit' => (int) $data['numeric_string_inlimit'],
+                'one_string' => (int) $data['one_string'],
+                'two_string' => (int) $data['two_string'],
+            ],
+            [
+                'positive_integer', 'negative_integer', 'float'
+            ]
+        );
+
+        $v = new Expector($data);
+        $vs = new Expector($data);
+        foreach (array_keys($expected_values_string) as $field) {
+            $v->expect_max($field, 43);
+            $vs->max($field, 43);
+        }
+
+        $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
+    }
+
+
     /**
      * @dataProvider phpTypesDataProvider
      */
     public function testPositiveDecimalConstraint($data) {
-
-        $data['beyond_max_range'] = 101;
 
         $expected_values_string = $this->getArrayTemplate($data,
             [
@@ -114,13 +166,8 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $v = new Expector($data);
         $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
-            if ($field == 'beyond_max_range') {
-                $v->expect_positive_decimal($field, 100);
-                $vs->decp($field, 100);
-            } else {
-                $v->expect_positive_decimal($field);
-                $vs->decp($field);
-            }
+            $v->expect_positive_decimal($field);
+            $vs->decp($field);
         }
 
         $this->assertSame($expected_values_string, $v->all());
@@ -131,9 +178,6 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
      * @dataProvider phpTypesDataProvider
      */
     public function testIntegerConstraint($data) {
-
-        $data['beyond_max_range'] = 101;
-        $data['beyond_min_range'] = - 101;
 
         $expected_values_string = $this->getArrayTemplate($data,
             [
@@ -151,16 +195,8 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $v = new Expector($data);
         $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
-            if ($field == 'beyond_max_range') {
-                $v->expect_decimal($field, null, 100);
-                $vs->dec($field, null, 100);
-            } elseif ($field == 'beyond_min_range') {
-                $v->expect_decimal($field, - 100);
-                $vs->dec($field, - 100);
-            } else {
-                $v->expect_decimal($field);
-                $vs->dec($field);
-            }
+            $v->expect_decimal($field);
+            $vs->dec($field);
         }
 
         $this->assertSame($expected_values_string, $v->all());
@@ -281,8 +317,7 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $v = new Expector(['val' => '4']);
         $v
             ->expect_decimal('val', $whitelist)
-            ->expect_in_array('val', $whitelist)
-        ;
+            ->expect_in_array('val', $whitelist);
         $this->assertSame(['val' => 4], $v->all());
     }
 
