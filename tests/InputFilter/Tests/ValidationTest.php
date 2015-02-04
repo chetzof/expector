@@ -32,6 +32,42 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         ];
     }
 
+    public function testFlags(){
+        $i = new InputFilter([
+            'foo' => '',
+            'foo1' => ' ',
+            'zero' => 0,
+            'bar' => false,
+        ], [], InputFilter::EMPTY_STRING_TO_NULL);
+        $i
+            ->string('foo')
+            ->string('foo1')
+            ->dec('zero')
+            ->bool('bar')
+        ;
+        $this->assertSame([
+            'foo' => null,
+            'foo1' => null,
+            'zero' => 0,
+            'bar' => false,
+        ],$i->all());
+    }
+
+    public function testPreliminarySanitization(){
+        $i = new InputFilter([
+            'foo' => ' ',
+            'bar' => ' bar '
+        ]);
+        $i
+            ->string('foo')
+            ->string('bar')
+        ;
+        $this->assertSame([
+            'foo' => '',
+            'bar' => 'bar'
+        ], $i->all());
+    }
+
     public function testAssumptions(){
         $input = [
             'limit' => '31',
@@ -39,8 +75,17 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
             'non_assumption_field' => '22',
             'test' => 'test1'
         ];
-        $if = new InputFilter($input, true);
-        $this->assertEquals([
+        $if = new InputFilter($input, [
+            [
+                'constraint' => 'positive_decimal',
+                'fields' => ['limit', 'page', 'id']
+            ],
+            [
+                'constraint' => ['in_array', ['test', 'test1']],
+                'fields' => ['test']
+            ]
+        ]);
+        $this->assertSame([
             'limit' => 31,
             'page' => false,
             'test' => 'test1'
@@ -49,6 +94,7 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $if = new InputFilter($input);
         $this->assertEmpty([],$if->all());
     }
+
 
     /**
      * @dataProvider phpTypesDataProvider
@@ -69,15 +115,19 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         );
 
         $v = new InputFilter($data);
+        $vs = new InputFilter($data);
         foreach (array_keys($expected_values_string) as $field) {
             if ($field == 'beyond_max_range') {
                 $v->expect_positive_decimal($field, 100);
+                $vs->decp($field, 100);
             }  else {
                 $v->expect_positive_decimal($field);
+                $vs->decp($field);
             }
         }
 
-        $this->assertEquals($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
     }
 
     /**
@@ -102,17 +152,22 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         );
 
         $v = new InputFilter($data);
+        $vs = new InputFilter($data);
         foreach (array_keys($expected_values_string) as $field) {
             if ($field == 'beyond_max_range') {
                 $v->expect_decimal($field, null, 100);
+                $vs->dec($field, null, 100);
             } elseif ($field == 'beyond_min_range') {
                 $v->expect_decimal($field, - 100);
+                $vs->dec($field, - 100);
             } else {
                 $v->expect_decimal($field);
+                $vs->dec($field);
             }
         }
 
-        $this->assertEquals($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
     }
 
     /**
@@ -137,11 +192,14 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         );
 
         $v = new InputFilter($data);
+        $vs = new InputFilter($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_slug($field);
+            $vs->slug($field);
         }
 
-        $this->assertEquals($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
     }
 
     /**
@@ -153,11 +211,14 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string']);
 
         $v = new InputFilter($data);
+        $vs = new InputFilter($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
+            $vs->inarr($field, $whitelist);
         }
 
-        $this->assertEquals($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
     }
 
     /**
@@ -169,11 +230,14 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $expected_values_string = $this->getArrayTemplate($data, [], ['positive_integer']);
 
         $v = new InputFilter($data);
+        $vs = new InputFilter($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
+            $vs->inarr($field, $whitelist);
         }
 
-        $this->assertEquals($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
     }
 
     /**
@@ -187,11 +251,14 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         ], ['simple_string']);
 
         $v = new InputFilter($data);
+        $vs = new InputFilter($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
+            $vs->inarr($field, $whitelist);
         }
 
-        $this->assertEquals($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
     }
 
     /**
@@ -203,11 +270,13 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $expected_values_string = $this->getArrayTemplate($data, [], ['positive_integer']);
 
         $v = new InputFilter($data);
+        $vs = new InputFilter($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
+            $vs->inarr($field, $whitelist);
         }
 
-        $this->assertEquals($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $v->all());
     }
 
     public function testArrayObject() {

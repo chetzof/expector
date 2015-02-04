@@ -2,38 +2,69 @@
 namespace Chetzof\InputFilter;
 
 /**
+ * @method $this dec($fields, $min_range = null, $max_range = null, $default = false)
  * @method $this expect_decimal($fields, $min_range = null, $max_range = null, $default = false)
+ *
  * @method $this expect_positive_decimal($fields, $max_range = null, $default = false)
+ * @method $this decp($fields, $max_range = null, $default = false)
+ *
  * @method $this expect_slug($fields, $default = false)
+ * @method $this slug($fields, $default = false)
+ *
  * @method $this expect_bool($fields, $invalidate_on_absence = true, $default = false)
+ * @method $this bool($fields, $invalidate_on_absence = true, $default = false)
+
+ * @method $this inarr($fields, $whitelist = [], $default = false)
  * @method $this expect_in_array($fields, $whitelist = [], $default = false)
+ *
+ * @method $this string($fields, $whitelist = [], $default = false)
+ * @method $this expect_string($fields, $default = false)
  */
 class InputFilter
 {
-    private $input;
-    private $output = [];
-    private $expectations = [];
-    private $dirty = true;
-    private $valid = false;
-    private $force = true;
-    private $use_assumptions;
+    protected $input;
+    protected $output = [];
+    protected $expectations = [];
+    protected $dirty = true;
+    protected $valid = false;
+    protected $force = true;
 
-    private $assumptions = [
-        [
-            'constraint' => 'positive_decimal',
-            'fields' => ['limit', 'page', 'id']
-        ],
-        [
-            'constraint' => ['in_array', ['test', 'test1']],
-            'fields' => ['test']
-        ]
+
+
+
+    protected $method_shorthands = [
+        'dec' => 'expect_decimal',
+        'decp' => 'expect_positive_decimal',
+        'slug' => 'expect_slug',
+        'bool' => 'expect_bool',
+        'inarr' => 'expect_in_array',
+        'string' => 'expect_string',
     ];
 
-    public function __construct(array $input, $assumptions = false) {
+    const EMPTY_STRING_TO_NULL = 1;
+    protected $flags;
+    protected $flag_empty_string_to_null = false;
+
+    protected $assumptions = [];
+
+    public function __construct(array $input, $assumptions = [], $flags = 0) {
         $this->input = $input;
         $this->perform_preliminary_sanitization();
-        $this->use_assumptions = $assumptions;
+        $this->assumptions = $assumptions;
+        $this->flags = $flags;
+        $this->calculate_flags();
     }
+
+    protected function process() {
+        $this->valid = true;
+        if (!empty($this->assumptions)){
+            $this->add_assumption_filters();
+        }
+        $this->build_filter();
+        $this->apply_flag_operations();
+        $this->dirty = false;
+    }
+
 
     private function add_assumption_filters() {
         $map = [];
@@ -58,27 +89,31 @@ class InputFilter
         }
     }
 
-    private function process() {
-        $this->valid = true;
-        if ($this->use_assumptions) {
-            $this->add_assumption_filters();
-        }
-        $this->build_filter();
-        $this->dirty = false;
-    }
 
-    private function perform_preliminary_sanitization() {
+    protected function perform_preliminary_sanitization() {
         array_walk_recursive($this->input, function (&$value) {
             if (is_string($value)) {
                 $value = trim($value);
             }
-//            if ($value === '') {
-//                $value = null;
-//            }
         });
     }
 
-    private function build_filter() {
+    protected function calculate_flags(){
+
+        if ($this->flags & self::EMPTY_STRING_TO_NULL){
+            $this->flag_empty_string_to_null = true;
+        }
+    }
+
+    protected function apply_flag_operations() {
+        array_walk_recursive($this->output, function (&$value) {
+            if ($this->flag_empty_string_to_null && $value === '') {
+                $value = null;
+            }
+        });
+    }
+
+    protected function build_filter() {
         foreach ($this->expectations as $expectation) {
             $validator_name = 'validate_' . $expectation['rule'];
             foreach ($expectation['fields'] as $field) {
@@ -122,6 +157,7 @@ class InputFilter
 
     /**
      * @return array
+     * @throws \Exception
      */
     public function all() {
         if ($this->dirty) {
@@ -148,11 +184,11 @@ class InputFilter
      *
      * @return bool
      */
-    private function validate_positive_decimal(&$value, $max_range = null) {
+    protected function validate_positive_decimal(&$value, $max_range = null) {
         return $this->validate_decimal($value, 1, $max_range);
     }
 
-    private function validate_decimal(&$value, $min_range = null, $max_range = null) {
+    protected function validate_decimal(&$value, $min_range = null, $max_range = null) {
         if (!is_bool($value)) {
             $value = filter_var($value, FILTER_VALIDATE_INT, $this->build_filter_options(
                 [
@@ -168,7 +204,7 @@ class InputFilter
         return $value !== false;
     }
 
-    private function validate_slug(&$value) {
+    protected function validate_slug(&$value) {
         if (!is_bool($value)) {
             $value = filter_var($value, FILTER_VALIDATE_REGEXP, $this->build_filter_options([
                 'regexp' => '/^([-a-z0-9_-]+)$/i'
@@ -180,7 +216,7 @@ class InputFilter
         return $value !== false;
     }
 
-    private function validate_in_array(&$value, $whitelist) {
+    protected function validate_in_array(&$value, $whitelist) {
         // try guess array type
         $value_copy = $value;
         $value_type = gettype(reset($whitelist));
@@ -198,7 +234,7 @@ class InputFilter
         return $result;
     }
 
-    private function validate_bool(&$value, $invalidate_on_absence = true) {
+    protected function validate_bool(&$value, $invalidate_on_absence = true) {
         if ($value === null && $invalidate_on_absence) {
             $value = false;
 
@@ -218,7 +254,11 @@ class InputFilter
         return true;
     }
 
-    private function build_filter_options(array $input_options) {
+    protected function  validate_string(&$value){
+        return is_string($value);
+    }
+
+    protected function build_filter_options(array $input_options) {
         $output_options = [];
         if (isset($input_options['flags'])) {
             $output_options['flags'] = $input_options['flags'];
@@ -230,6 +270,7 @@ class InputFilter
 
         return $output_options;
     }
+
 
     /**
      * @param $name
@@ -267,6 +308,8 @@ class InputFilter
             ];
 
             return $this;
+        } elseif (isset($this->method_shorthands[$name])) {
+            return call_user_func_array([$this, $this->method_shorthands[$name]], $arguments);
         } else {
             throw new \Exception("Invalid method $name");
         }
