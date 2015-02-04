@@ -1,5 +1,5 @@
 {
-  "name": "chetzof/Expector",
+  "name": "chetzof/expector",
   "description": "Validation & filter lib",
   "require-dev": {
     "phpunit/phpunit": "~4.4"
