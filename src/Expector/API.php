@@ -1,9 +1,9 @@
 <?php
-namespace Chetzof\InputFilter;
+namespace Chetzof\Expector;
 
-use Chetzof\InputFilter\InputFilter;
+use Chetzof\Expector\Expector;
 
-class API extends InputFilter {
+class API extends Expector {
 
 
     public function __construct(array $input, $assumptions = false) {

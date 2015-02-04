@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/inputfilter.iml" filepath="$PROJECT_DIR$/.idea/inputfilter.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/expector.iml" filepath="$PROJECT_DIR$/.idea/expector.iml" />
     </modules>
   </component>
 </project>

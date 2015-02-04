@@ -1,7 +1,7 @@
 <?php
-namespace Chetzof\InputFilter\Tests;
+namespace Chetzof\Expector\Tests;
 
-use Chetzof\InputFilter\InputFilter;
+use Chetzof\Expector\Expector;
 
 class ValidationTest extends \PHPUnit_Framework_TestCase
 {
@@ -32,50 +32,48 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         ];
     }
 
-    public function testFlags(){
-        $i = new InputFilter([
+    public function testFlags() {
+        $i = new Expector([
             'foo' => '',
             'foo1' => ' ',
             'zero' => 0,
             'bar' => false,
-        ], [], InputFilter::EMPTY_STRING_TO_NULL);
+        ], [], Expector::EMPTY_STRING_TO_NULL);
         $i
             ->string('foo')
             ->string('foo1')
             ->dec('zero')
-            ->bool('bar')
-        ;
+            ->bool('bar');
         $this->assertSame([
             'foo' => null,
             'foo1' => null,
             'zero' => 0,
             'bar' => false,
-        ],$i->all());
+        ], $i->all());
     }
 
-    public function testPreliminarySanitization(){
-        $i = new InputFilter([
+    public function testPreliminarySanitization() {
+        $i = new Expector([
             'foo' => ' ',
             'bar' => ' bar '
         ]);
         $i
             ->string('foo')
-            ->string('bar')
-        ;
+            ->string('bar');
         $this->assertSame([
             'foo' => '',
             'bar' => 'bar'
         ], $i->all());
     }
 
-    public function testAssumptions(){
+    public function testAssumptions() {
         $input = [
             'limit' => '31',
             'page' => 'invalid string',
             'non_assumption_field' => '22',
             'test' => 'test1'
         ];
-        $if = new InputFilter($input, [
+        $if = new Expector($input, [
             [
                 'constraint' => 'positive_decimal',
                 'fields' => ['limit', 'page', 'id']
@@ -89,12 +87,11 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
             'limit' => 31,
             'page' => false,
             'test' => 'test1'
-        ],$if->all());
+        ], $if->all());
 
-        $if = new InputFilter($input);
-        $this->assertEmpty([],$if->all());
+        $if = new Expector($input);
+        $this->assertEmpty([], $if->all());
     }
-
 
     /**
      * @dataProvider phpTypesDataProvider
@@ -107,20 +104,20 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
             [
                 'numeric_string' => (int) $data['numeric_string'],
                 'one_string' => (int) $data['one_string'],
-                'two_string' => (int) $data['two_string'],
+                'two_string' => false,
             ],
             [
                 'positive_integer',
             ]
         );
 
-        $v = new InputFilter($data);
-        $vs = new InputFilter($data);
+        $v = new Expector($data);
+        $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
             if ($field == 'beyond_max_range') {
                 $v->expect_positive_decimal($field, 100);
                 $vs->decp($field, 100);
-            }  else {
+            } else {
                 $v->expect_positive_decimal($field);
                 $vs->decp($field);
             }
@@ -151,8 +148,8 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
             ]
         );
 
-        $v = new InputFilter($data);
-        $vs = new InputFilter($data);
+        $v = new Expector($data);
+        $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
             if ($field == 'beyond_max_range') {
                 $v->expect_decimal($field, null, 100);
@@ -191,8 +188,8 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
             ]
         );
 
-        $v = new InputFilter($data);
-        $vs = new InputFilter($data);
+        $v = new Expector($data);
+        $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_slug($field);
             $vs->slug($field);
@@ -210,8 +207,8 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
 
         $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string']);
 
-        $v = new InputFilter($data);
-        $vs = new InputFilter($data);
+        $v = new Expector($data);
+        $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
             $vs->inarr($field, $whitelist);
@@ -229,8 +226,8 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
 
         $expected_values_string = $this->getArrayTemplate($data, [], ['positive_integer']);
 
-        $v = new InputFilter($data);
-        $vs = new InputFilter($data);
+        $v = new Expector($data);
+        $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
             $vs->inarr($field, $whitelist);
@@ -244,14 +241,12 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
      * @dataProvider phpTypesDataProvider
      */
     public function testMixedStringInArrayConstraint($data) {
-        $whitelist = [$data['simple_string'], $data['positive_integer']];
+        $whitelist = [$data['simple_string'], (string) $data['positive_integer']];
 
-        $expected_values_string = $this->getArrayTemplate($data, [
-            'positive_integer' => (string) $data['positive_integer']
-        ], ['simple_string']);
+        $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string']);
 
-        $v = new InputFilter($data);
-        $vs = new InputFilter($data);
+        $v = new Expector($data);
+        $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
             $vs->inarr($field, $whitelist);
@@ -267,16 +262,28 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
     public function testMixedIntegerInArrayConstraint($data) {
         $whitelist = [$data['positive_integer'], $data['simple_string']];
 
-        $expected_values_string = $this->getArrayTemplate($data, [], ['positive_integer']);
+        $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string', 'positive_integer']);
 
-        $v = new InputFilter($data);
-        $vs = new InputFilter($data);
+        $v = new Expector($data);
+        $vs = new Expector($data);
         foreach (array_keys($expected_values_string) as $field) {
             $v->expect_in_array($field, $whitelist);
             $vs->inarr($field, $whitelist);
         }
 
         $this->assertSame($expected_values_string, $v->all());
+        $this->assertSame($expected_values_string, $vs->all());
+    }
+
+    public function testStringtoIntConstraint() {
+        $whitelist = [4];
+
+        $v = new Expector(['val' => '4']);
+        $v
+            ->expect_decimal('val', $whitelist)
+            ->expect_in_array('val', $whitelist)
+        ;
+        $this->assertSame(['val' => 4], $v->all());
     }
 
     public function testArrayObject() {

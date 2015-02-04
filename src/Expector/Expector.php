@@ -1,26 +1,21 @@
 <?php
-namespace Chetzof\InputFilter;
+namespace Chetzof\Expector;
 
 /**
  * @method $this dec($fields, $min_range = null, $max_range = null, $default = false)
  * @method $this expect_decimal($fields, $min_range = null, $max_range = null, $default = false)
- *
  * @method $this expect_positive_decimal($fields, $max_range = null, $default = false)
  * @method $this decp($fields, $max_range = null, $default = false)
- *
  * @method $this expect_slug($fields, $default = false)
  * @method $this slug($fields, $default = false)
- *
  * @method $this expect_bool($fields, $invalidate_on_absence = true, $default = false)
  * @method $this bool($fields, $invalidate_on_absence = true, $default = false)
-
  * @method $this inarr($fields, $whitelist = [], $default = false)
  * @method $this expect_in_array($fields, $whitelist = [], $default = false)
- *
  * @method $this string($fields, $whitelist = [], $default = false)
  * @method $this expect_string($fields, $default = false)
  */
-class InputFilter
+class Expector
 {
     protected $input;
     protected $output = [];
@@ -28,9 +23,7 @@ class InputFilter
     protected $dirty = true;
     protected $valid = false;
     protected $force = true;
-
-
-
+    protected $failed_fields = [];
 
     protected $method_shorthands = [
         'dec' => 'expect_decimal',
@@ -57,14 +50,14 @@ class InputFilter
 
     protected function process() {
         $this->valid = true;
-        if (!empty($this->assumptions)){
+        $this->failed_fields = [];
+        if (!empty($this->assumptions)) {
             $this->add_assumption_filters();
         }
         $this->build_filter();
         $this->apply_flag_operations();
         $this->dirty = false;
     }
-
 
     private function add_assumption_filters() {
         $map = [];
@@ -89,7 +82,6 @@ class InputFilter
         }
     }
 
-
     protected function perform_preliminary_sanitization() {
         array_walk_recursive($this->input, function (&$value) {
             if (is_string($value)) {
@@ -98,9 +90,9 @@ class InputFilter
         });
     }
 
-    protected function calculate_flags(){
+    protected function calculate_flags() {
 
-        if ($this->flags & self::EMPTY_STRING_TO_NULL){
+        if ($this->flags & self::EMPTY_STRING_TO_NULL) {
             $this->flag_empty_string_to_null = true;
         }
     }
@@ -117,24 +109,27 @@ class InputFilter
         foreach ($this->expectations as $expectation) {
             $validator_name = 'validate_' . $expectation['rule'];
             foreach ($expectation['fields'] as $field) {
-                if (isset($this->input[$field])) {
-                    $surefield = &$this->input[$field];
-                } else {
-                    $surefield = null;
+                if (!in_array($field, $this->failed_fields)) {
+                    if (isset($this->input[$field])) {
+                        $surefield = &$this->input[$field];
+                    } else {
+                        $surefield = null;
+                    }
+
+                    $args = array_merge([&$surefield], $expectation['options']);
+                    $validation_result = call_user_func_array([$this, $validator_name], $args);
+
+                    if ($validation_result === false) {
+                        $this->valid = false;
+                        $this->output[$field] = $expectation['default'];
+                        $this->failed_fields[] = $field;
+                    } else {
+                        $this->output[$field] = $surefield;
+                    }
+                    unset($surefield);
                 }
 
-                $args = array_merge([&$surefield], $expectation['options']);
-                $validation_result = call_user_func_array([$this, $validator_name], $args);
-
-                if ($validation_result === false) {
-                    $this->valid = false;
-                    $this->output[$field] = $expectation['default'];
-                } else {
-                    $this->output[$field] = $surefield;
-                }
-                unset($surefield);
             }
-
         }
     }
 
@@ -217,19 +212,7 @@ class InputFilter
     }
 
     protected function validate_in_array(&$value, $whitelist) {
-        // try guess array type
-        $value_copy = $value;
-        $value_type = gettype(reset($whitelist));
-        if ($value_type == 'integer') {
-            if ($this->validate_decimal($value_copy) === false) {
-                return false;
-            }
-        }
-
-        $result = in_array($value_copy, $whitelist, true);
-        if ($result) {
-            $value = $value_copy;
-        }
+        $result = in_array($value, $whitelist, true);
 
         return $result;
     }
@@ -254,8 +237,14 @@ class InputFilter
         return true;
     }
 
-    protected function  validate_string(&$value){
-        return is_string($value);
+    protected function  validate_string(&$value) {
+        if (is_scalar($value)) {
+            $value = (string) $value;
+
+            return true;
+        } else {
+            return false;
+        }
     }
 
     protected function build_filter_options(array $input_options) {
@@ -270,7 +259,6 @@ class InputFilter
 
         return $output_options;
     }
-
 
     /**
      * @param $name
