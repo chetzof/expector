@@ -2,20 +2,21 @@
 namespace Chetzof\Expector;
 
 /**
- * @method $this dec($fields, $default = false)
- * @method $this expect_decimal($fields, $default = false)
- * @method $this expect_positive_decimal($fields, $default = false)
- * @method $this decp($fields, $default = false)
- * @method $this expect_slug($fields, $default = false)
- * @method $this slug($fields, $default = false)
- * @method $this expect_bool($fields, $invalidate_on_absence = true, $default = false)
- * @method $this bool($fields, $invalidate_on_absence = true, $default = false)
- * @method $this inarr($fields, $whitelist = [], $default = false)
- * @method $this expect_in_array($fields, $whitelist = [], $default = false)
- * @method $this string($fields, $whitelist = [], $default = false)
- * @method $this expect_string($fields, $default = false)
- * @method $this max($fields, $max, $default = false)
- * @method $this expect_max($fields, $max, $default = false)
+ * @method $this dec($fields)
+ * @method $this expect_decimal($fields)
+ * @method $this expect_positive_decimal($fields)
+ * @method $this decp($fields)
+ * @method $this expect_slug($fields)
+ * @method $this slug($fields)
+ * @method $this expect_bool($fields, $invalidate_on_absence = true)
+ * @method $this bool($fields, $invalidate_on_absence = true)
+ * @method $this inarr($fields, $whitelist = [])
+ * @method $this expect_in_array($fields, $whitelist = [])
+ * @method $this string($fields, $whitelist = [])
+ * @method $this expect_string($fields)
+ * @method $this max($fields, $max)
+ * @method $this expect_max($fields, $max)
+ * @method $this optional($fields, $value)
  */
 class Expector
 {
@@ -24,8 +25,9 @@ class Expector
     protected $expectations = [];
     protected $dirty = true;
     protected $valid = false;
-    protected $force = true;
+    protected $force = false;
     protected $failed_fields = [];
+    protected $optional_fields = [];
 
     protected $method_shorthands = [
         'dec' => 'expect_decimal',
@@ -35,11 +37,14 @@ class Expector
         'inarr' => 'expect_in_array',
         'string' => 'expect_string',
         'max' => 'expect_max',
+        'optional' => 'set_optional',
     ];
 
     const EMPTY_STRING_TO_NULL = 1;
+    const ALL_OPTIONAL = 2;
     protected $flags;
     protected $flag_empty_string_to_null = false;
+    protected $flag_all_optional = false;
 
     protected $assumptions = [];
 
@@ -49,6 +54,14 @@ class Expector
         $this->assumptions = $assumptions;
         $this->flags = $flags;
         $this->calculate_flags();
+    }
+
+    public function set_optional($fields, $value = null) {
+        foreach ((array) $fields as $field) {
+            $this->optional_fields[$field] = $value;
+        }
+
+        return $this;
     }
 
     protected function process() {
@@ -94,9 +107,11 @@ class Expector
     }
 
     protected function calculate_flags() {
-
         if ($this->flags & self::EMPTY_STRING_TO_NULL) {
             $this->flag_empty_string_to_null = true;
+        }
+        if ($this->flags & self::ALL_OPTIONAL) {
+            $this->flag_all_optional = true;
         }
     }
 
@@ -109,30 +124,54 @@ class Expector
     }
 
     protected function build_filter() {
-        foreach ($this->expectations as $expectation) {
-            $validator_name = 'validate_' . $expectation['rule'];
-            foreach ($expectation['fields'] as $field) {
+        if (!empty(array_diff_key($this->optional_fields, $this->expectations))) {
+            throw new \Exception('Field cannot have optional value but no validation');
+        }
+
+        if ($this->flag_all_optional) {
+            foreach (
+                array_diff(
+                    array_keys($this->expectations),
+                    array_keys($this->optional_fields),
+                    array_keys($this->input)) as $field
+            ) {
+                $this->optional_fields[$field] = null;
+            }
+        }
+
+        foreach ($this->expectations as $field => $expectations) {
+            if (array_key_exists($field, $this->input)) {
+                $surefield = &$this->input[$field];
+            } else {
+                if (array_key_exists($field, $this->optional_fields)) {
+                    continue;
+                } else {
+                    $this->failed_fields[] = $field;
+                    $this->valid = false;
+                    continue;
+                }
+            }
+            foreach ($expectations as $expectation) {
                 if (!in_array($field, $this->failed_fields)) {
-                    if (isset($this->input[$field])) {
-                        $surefield = &$this->input[$field];
-                    } else {
-                        $surefield = null;
-                    }
+                    $validator_name = 'validate_' . $expectation['rule'];
 
                     $args = array_merge([&$surefield], $expectation['options']);
                     $validation_result = call_user_func_array([$this, $validator_name], $args);
 
                     if ($validation_result === false) {
                         $this->valid = false;
-                        $this->output[$field] = $expectation['default'];
                         $this->failed_fields[] = $field;
                     } else {
                         $this->output[$field] = $surefield;
                     }
-                    unset($surefield);
-                }
 
+                }
             }
+            unset($surefield);
+        }
+
+        if ($this->valid) {
+            $this->output = array_merge($this->output, array_diff_key($this->optional_fields, $this->output));
         }
     }
 
@@ -294,18 +333,29 @@ class Expector
                 $options = array_splice($arguments, 0, $num - 1);
             }
 
-            if (!count($arguments)) {
-                $default = false;
-            } else {
-                $default = array_pop($arguments);
-            }
-
-            $this->expectations[] = [
+            $data_set = [
                 'rule' => $rule_name,
-                'fields' => (array) $fields,
-                'default' => $default,
                 'options' => $options,
             ];
+
+            foreach ((array) $fields as $field) {
+                if (!isset($this->expectations[$field])) {
+                    $this->expectations[$field][] = $data_set;
+                } else {
+                    $target_key = null;
+                    foreach ($this->expectations[$field] as $key => $expectation) {
+                        if ($expectation['rule'] === $rule_name) {
+                            $target_key = $key;
+                            break;
+                        }
+                    }
+                    if ($target_key !== null) {
+                        $this->expectations[$field][$target_key] = $data_set;
+                    } else {
+                        $this->expectations[$field][] = $data_set;
+                    }
+                }
+            }
 
             return $this;
         } elseif (isset($this->method_shorthands[$name])) {
@@ -313,6 +363,18 @@ class Expector
         } else {
             throw new \Exception("Invalid method $name");
         }
+    }
+
+    private function has_rule($field, $rule) {
+        if (isset($this->expectations[$field])) {
+            foreach ($this->expectations[$field] as $expectation) {
+                if ($expectation['rule'] === $rule) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
 }

@@ -32,26 +32,126 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         ];
     }
 
-    public function testMaxAndDecimalCombination() {
-        $i = new Expector([
-            'limit' => '10',
-            'over_limit' => '20',
+    public function phpTypesDataProviderRevised() {
+        $data = [
+            'simple_string' => 'foo',
+            'slug_string' => 'foo-bar_foo',
+            'numeric_string_high' => '90',
+            'numeric_string_low' => '20',
+            'text' => 'foo bar',
+            'empty' => '',
+            'empty_array' => [],
+            'non_empty_array' => ['bar'],
+            'float' => 42.44,
+            'negative_integer' => - 11,
+            'positive_integer' => 43,
+            'object' => new \stdClass(),
+            'null' => null,
+            'true' => true,
+            'false' => false,
+            'one_string' => '1',
+            'two_string' => '0',
+            'off' => 'off',
+            'number_string' => '42a',
+        ];
+        $output = [];
+        foreach ($data as $key => $value) {
+            $output[] = [$key, $value];
+        }
 
-        ], [], Expector::EMPTY_STRING_TO_NULL);
-        $i
-            ->decp('limit')
-            ->max('limit', 10)
-            ->decp('over_limit')
-            ->max('over_limit', 10)
-        ;
-        $this->assertSame([
-            'limit' => 10,
-            'over_limit' => false,
-        ], $i->all());
+        return $output;
     }
 
+    public function testOptionalConstraint() {
+        $i = new Expector([
+            'page' => '4',
+            'two' => 'foo'
+        ]);
+        $i
+            ->string(['one', 'two'])
+            ->decp('limit')
+            ->max('limit', 20)
+            ->optional('limit', 15)
+            ->decp('page')
+            ->optional('page', 2)
+            ->optional(['one', 'two'], 'bar');
+        $this->assertSame([
+            'two' => 'foo',
+            'page' => 4,
+            'limit' => 15,
+            'one' => 'bar'
+        ], $i->all());
+        $this->assertTrue($i->valid());
+    }
+
+    /**
+     * @expectedException \Exception
+     */
+    public function testOptionalValueAndNoValidator() {
+        $i = new Expector([]);
+        $i
+            ->optional('page', 2);
+        $i->all();
+    }
+
+    public function testAllOptional() {
+        $i = new Expector([
+            'foo' => 1,
+            'bar' => 'string'
+        ], [], Expector::ALL_OPTIONAL);
+        $i
+            ->string('bar')
+            ->decp('foo')
+            ->dec('non-existent')
+            ->dec('non-existent1')
+            ->optional('non-existent', 'bar');
+        $this->assertSame([
+            'bar' => 'string',
+            'foo' => 1,
+            'non-existent' => 'bar',
+            'non-existent1' => null,
+        ], $i->all());
+        $this->assertTrue($i->valid());
+    }
+
+    public function testOverwriteConstraint() {
+        $i = new Expector([
+            'limit' => '15',
+        ]);
+        $i
+            ->max('limit', 10)
+            ->max('limit', 20);
+        $this->assertSame([
+            'limit' => 15,
+        ], $i->all());
+        $this->assertTrue($i->valid());
+    }
+
+    public function testMaxAndDecimalCombinationValid() {
+        $i = new Expector([
+            'limit' => '9',
+        ]);
+        $i
+            ->decp('limit')
+            ->max('limit', 10);
+        $this->assertSame([
+            'limit' => 9,
+        ], $i->all());
+        $this->assertTrue($i->valid());
+    }
+
+    public function testMaxAndDecimalCombinationInvalid() {
+        $i = new Expector([
+            'over_limit' => '20',
+        ]);
+        $i
+            ->decp('over_limit')
+            ->max('over_limit', 10);
+        $this->assertFalse($i->valid());
+    }
 
     public function testFlags() {
+        return $this->markTestIncomplete();
         $i = new Expector([
             'foo' => '',
             'foo1' => ' ',
@@ -85,10 +185,18 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         ], $i->all());
     }
 
-    public function testAssumptions() {
+    public function testEmptyValidator() {
+        $if = new Expector([
+            'limit' => '31',
+            'non_assumption_field' => '22',
+            'test' => 'test1'
+        ]);
+        $this->assertEmpty($if->all());
+    }
+
+    public function testAssumptionsValid() {
         $input = [
             'limit' => '31',
-            'page' => 'invalid string',
             'non_assumption_field' => '22',
             'test' => 'test1'
         ];
@@ -104,212 +212,164 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         ]);
         $this->assertSame([
             'limit' => 31,
-            'page' => false,
             'test' => 'test1'
         ], $if->all());
-
-        $if = new Expector($input);
-        $this->assertEmpty([], $if->all());
     }
 
-    public function testDefaults() {
-        $expector = new Expector(['limit' => '']);
-        $expector->decp('limit', null, 10);
-        $this->assertSame(['limit' => 10], $expector->all());
-    }
-
-
-    /**
-     * @dataProvider phpTypesDataProvider
-     */
-    public function testMaxConstraint($data){
-        $data['numeric_string_inlimit'] = '20';
-        $expected_values_string = $this->getArrayTemplate($data,
+    public function testAssumptionsInvalid() {
+        $input = [
+            'limit' => '31',
+            'page' => 'invalid string',
+            'non_assumption_field' => '22',
+        ];
+        $if = new Expector($input, [
             [
-                'numeric_string_inlimit' => (int) $data['numeric_string_inlimit'],
-                'one_string' => (int) $data['one_string'],
-                'two_string' => (int) $data['two_string'],
+                'constraint' => 'positive_decimal',
+                'fields' => ['limit', 'page', 'id']
             ],
             [
-                'positive_integer', 'negative_integer', 'float'
+                'constraint' => ['in_array', ['test', 'test1']],
+                'fields' => ['test']
             ]
-        );
+        ]);
 
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_max($field, 43);
-            $vs->max($field, 43);
+        $this->assertFalse($if->valid());
+    }
+
+    /**
+     * @dataProvider phpTypesDataProviderRevised
+     */
+    public function testMaxConstraint($name, $value) {
+        $valid_fields = [
+            'positive_integer' => 43,
+            'numeric_string_low' => 20,
+            'float' => 42.44,
+            'negative_integer' => - 11,
+            'one_string' => 1,
+            'two_string' => 0
+        ];
+        $v = new Expector([$name => $value]);
+        $v->max($name, 50);
+        if (array_key_exists($name, $valid_fields)) {
+            $this->assertSame([$name => $valid_fields[$name]], $v->all());
+            $this->assertTrue($v->valid());
+        } else {
+            $this->assertFalse($v->valid());
         }
+    }
 
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
+    /**
+     * @dataProvider phpTypesDataProviderRevised
+     */
+    public function testPositiveDecimalConstraint($name, $value) {
+        $valid_fields = [
+            'positive_integer' => 43,
+            'numeric_string_low' => 20,
+            'numeric_string_high' => 90,
+            'one_string' => 1,
+        ];
+
+        $v = new Expector([$name => $value]);
+        $v->decp($name);
+        if (array_key_exists($name, $valid_fields)) {
+            $this->assertSame([$name => $valid_fields[$name]], $v->all());
+            $this->assertTrue($v->valid());
+        } else {
+            $this->assertFalse($v->valid());
+        }
+    }
+
+    /**
+     * @dataProvider phpTypesDataProviderRevised
+     */
+    public function testIntegerConstraint($name, $value) {
+        $valid_fields = [
+            'positive_integer' => 43,
+            'negative_integer' => - 11,
+            'numeric_string_low' => 20,
+            'numeric_string_high' => 90,
+            'one_string' => 1,
+            'two_string' => 0,
+        ];
+
+        $v = new Expector([$name => $value]);
+        $v->dec($name);
+        if (array_key_exists($name, $valid_fields)) {
+            $this->assertSame([$name => $valid_fields[$name]], $v->all());
+            $this->assertTrue($v->valid());
+        } else {
+            $this->assertFalse($v->valid());
+        }
+    }
+
+    /**
+     * @dataProvider phpTypesDataProviderRevised
+     */
+    public function testSlugConstraint($name, $value) {
+        $valid_fields = [
+            'simple_string' => 'foo',
+            'slug_string' => 'foo-bar_foo',
+            'numeric_string_low' => '20',
+            'numeric_string_high' => '90',
+            'number_string' => '42a',
+            'one_string' => '1',
+            'two_string' => '0',
+            'off' => 'off',
+            'positive_integer' => '43',
+            'negative_integer' => '-11'
+        ];
+
+        $v = new Expector([$name => $value]);
+        $v->slug($name);
+        if (array_key_exists($name, $valid_fields)) {
+            $this->assertSame([$name => $valid_fields[$name]], $v->all());
+            $this->assertTrue($v->valid());
+        } else {
+            $this->assertFalse($v->valid());
+        }
+    }
+
+    /**
+     * @dataProvider phpTypesDataProviderRevised
+     */
+    public function testStringInArrayConstraint($name, $value) {
+        $whitelist = ['foo', 'bar'];
+        $valid_fields = [
+            'simple_string' => 'foo',
+        ];
+
+        $v = new Expector([$name => $value]);
+        $v->inarr($name, $whitelist);
+
+        if (array_key_exists($name, $valid_fields)) {
+            $this->assertSame([$name => $valid_fields[$name]], $v->all());
+            $this->assertTrue($v->valid());
+        } else {
+            $this->assertFalse($v->valid());
+        }
     }
 
 
     /**
-     * @dataProvider phpTypesDataProvider
+     * @dataProvider phpTypesDataProviderRevised
      */
-    public function testPositiveDecimalConstraint($data) {
+    public function testIntegerInArrayConstraint($name, $value) {
+        $whitelist = ['43', 90, -11];
+        $valid_fields = [
+            'negative_integer' => -11,
+        ];
 
-        $expected_values_string = $this->getArrayTemplate($data,
-            [
-                'numeric_string' => (int) $data['numeric_string'],
-                'one_string' => (int) $data['one_string'],
-                'two_string' => false,
-            ],
-            [
-                'positive_integer',
-            ]
-        );
+        $v = new Expector([$name => $value]);
+        $v->inarr($name, $whitelist);
 
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_positive_decimal($field);
-            $vs->decp($field);
+        if (array_key_exists($name, $valid_fields)) {
+            $this->assertSame([$name => $valid_fields[$name]], $v->all());
+            $this->assertTrue($v->valid());
+        } else {
+            $this->assertFalse($v->valid());
         }
-
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
     }
 
-    /**
-     * @dataProvider phpTypesDataProvider
-     */
-    public function testIntegerConstraint($data) {
-
-        $expected_values_string = $this->getArrayTemplate($data,
-            [
-                'numeric_string' => (int) $data['numeric_string'],
-                'negative_integer' => (int) $data['negative_integer'],
-                'one_string' => (int) $data['one_string'],
-                'two_string' => (int) $data['two_string'],
-            ],
-            [
-                'positive_integer',
-                'negative_integer'
-            ]
-        );
-
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_decimal($field);
-            $vs->dec($field);
-        }
-
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
-    }
-
-    /**
-     * @dataProvider phpTypesDataProvider
-     */
-    public function testSlugConstraint($data) {
-
-        $expected_values_string = $this->getArrayTemplate($data,
-            [
-                'positive_integer' => (string) $data['positive_integer'],
-                'negative_integer' => (string) $data['negative_integer'],
-            ],
-            [
-                'simple_string',
-                'slug_string',
-                'numeric_string',
-                'one_string',
-                'two_string',
-                'off',
-                'number_string',
-            ]
-        );
-
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_slug($field);
-            $vs->slug($field);
-        }
-
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
-    }
-
-    /**
-     * @dataProvider phpTypesDataProvider
-     */
-    public function testStringInArrayConstraint($data) {
-        $whitelist = [$data['simple_string'], 'bar'];
-
-        $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string']);
-
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_in_array($field, $whitelist);
-            $vs->inarr($field, $whitelist);
-        }
-
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
-    }
-
-    /**
-     * @dataProvider phpTypesDataProvider
-     */
-    public function testIntegerInArrayConstraint($data) {
-        $whitelist = [11, $data['positive_integer']];
-
-        $expected_values_string = $this->getArrayTemplate($data, [], ['positive_integer']);
-
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_in_array($field, $whitelist);
-            $vs->inarr($field, $whitelist);
-        }
-
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
-    }
-
-    /**
-     * @dataProvider phpTypesDataProvider
-     */
-    public function testMixedStringInArrayConstraint($data) {
-        $whitelist = [$data['simple_string'], (string) $data['positive_integer']];
-
-        $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string']);
-
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_in_array($field, $whitelist);
-            $vs->inarr($field, $whitelist);
-        }
-
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
-    }
-
-    /**
-     * @dataProvider phpTypesDataProvider
-     */
-    public function testMixedIntegerInArrayConstraint($data) {
-        $whitelist = [$data['positive_integer'], $data['simple_string']];
-
-        $expected_values_string = $this->getArrayTemplate($data, [], ['simple_string', 'positive_integer']);
-
-        $v = new Expector($data);
-        $vs = new Expector($data);
-        foreach (array_keys($expected_values_string) as $field) {
-            $v->expect_in_array($field, $whitelist);
-            $vs->inarr($field, $whitelist);
-        }
-
-        $this->assertSame($expected_values_string, $v->all());
-        $this->assertSame($expected_values_string, $vs->all());
-    }
 
     public function testStringtoIntConstraint() {
         $whitelist = [4];
@@ -322,6 +382,10 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
     }
 
     public function testArrayObject() {
+        $this->markTestIncomplete();
+    }
+
+    public function testSuccessfulInputWithDefaults() {
         $this->markTestIncomplete();
     }
 
