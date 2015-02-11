@@ -1,6 +1,8 @@
 <?php
 namespace Chetzof\Expector;
 
+
+
 /**
  * @method $this dec($fields)
  * @method $this expect_decimal($fields)
@@ -182,6 +184,10 @@ class Expector
 
         if (!$this->valid && !$this->force) {
             throw new \Exception('Unsafe input');
+        }
+
+        if (!isset($this->expectations[$key])){
+            throw new UnexpectedFieldException($key);
         }
 
         // to return false on null is expected

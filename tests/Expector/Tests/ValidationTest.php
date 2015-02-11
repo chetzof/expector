@@ -94,6 +94,15 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         $i->all();
     }
 
+    /**
+     * @expectedException \Chetzof\Expector\UnexpectedFieldException
+     */
+    public function testGettingNonWhitelistedField() {
+        $i = new Expector(['bar' => 'doo']);
+        $i->string('bar');
+        $i->get('foo');
+    }
+
     public function testAllOptional() {
         $i = new Expector([
             'foo' => 1,
@@ -349,14 +358,13 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
         }
     }
 
-
     /**
      * @dataProvider phpTypesDataProviderRevised
      */
     public function testIntegerInArrayConstraint($name, $value) {
-        $whitelist = ['43', 90, -11];
+        $whitelist = ['43', 90, - 11];
         $valid_fields = [
-            'negative_integer' => -11,
+            'negative_integer' => - 11,
         ];
 
         $v = new Expector([$name => $value]);
@@ -369,7 +377,6 @@ class ValidationTest extends \PHPUnit_Framework_TestCase
             $this->assertFalse($v->valid());
         }
     }
-
 
     public function testStringtoIntConstraint() {
         $whitelist = [4];
